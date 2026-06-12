@@ -1,3 +1,12 @@
-build
+# Build output
+build/
 mx.scratch
-!.settings
+
+# VSCode workspace (machine-specific editor and debug config)
+.vscode/
+
+# STM32Cube VSCode extension bundle store (machine-specific)
+.settings/
+
+# CubeMX internal state (regenerated from .ioc on any machine)
+.mxproject

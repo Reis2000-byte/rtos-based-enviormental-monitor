@@ -1,4 +1,5 @@
 {
+    "cmake.sourceDirectory": "${workspaceFolder}/cmake/stm32cubemx",
     "cmake.cmakePath": "cube-cmake",
     "cmake.configureArgs": [
         "-DCMAKE_COMMAND=cube-cmake"

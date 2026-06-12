@@ -113,6 +113,11 @@ int main(void)
     MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
+    /* Bare-metal toggle: flip LD4 (PD12) directly via the ODR register.
+     * BSRR could also be used for atomic set/reset, but XOR on ODR is the
+     * simplest way to see a register-level toggle without any HAL call. */
+    GPIOD->ODR ^= (1U << 12);
+    HAL_Delay(500);
   }
   /* USER CODE END 3 */
 }

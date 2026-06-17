@@ -18,7 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "stm32f407xx.h"
+#include "stm32f4xx_hal.h"
+#include "stm32f4xx_hal_def.h"
+#include "stm32f4xx_hal_uart.h"
 #include "usb_host.h"
+#include <stdint.h>
+#include <string.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -47,7 +53,12 @@ I2S_HandleTypeDef hi2s3;
 
 SPI_HandleTypeDef hspi1;
 
+UART_HandleTypeDef huart2;
+
 /* USER CODE BEGIN PV */
+uint8_t rx_buffer[64];
+uint8_t rxByte;
+uint8_t rxIndex = 0;
 
 /* USER CODE END PV */
 
@@ -57,10 +68,11 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_USART2_UART_Init(void);
 void MX_USB_HOST_Process(void);
 
 /* USER CODE BEGIN PFP */
-
+static void processCommand(uint8_t *cmd);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -101,8 +113,9 @@ int main(void)
   MX_I2S3_Init();
   MX_SPI1_Init();
   MX_USB_HOST_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_UART_Receive_IT(&huart2, &rxByte, 1); // kick off listener
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -113,6 +126,12 @@ int main(void)
     MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
+    GPIOD->BSRR = (1UL << 12); // set PD12 high
+    HAL_Delay(500);
+    GPIOD->BSRR = (1UL << (12 + 16)); // set PD12 low
+    HAL_Delay(500);
+
+
   }
   /* USER CODE END 3 */
 }
@@ -269,6 +288,39 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -367,7 +419,49 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(huart -> Instance == USART2)
+  {
+    if(rxByte == '\r')
+    {
+      HAL_UART_Transmit(&huart2, (uint8_t *)"\r\n", 2, HAL_MAX_DELAY);
+      rx_buffer[rxIndex] = '\0'; //NULL terminate
+      processCommand(rx_buffer);
+      rxIndex = 0;
+    }
+    else {
+      HAL_UART_Transmit(&huart2, &rxByte, 1, HAL_MAX_DELAY);
+      rx_buffer[rxIndex++] = rxByte; //Add to Buffer
+    }
+    HAL_UART_Receive_IT(&huart2, &rxByte, 1);
+  }
+}
 
+static void processCommand(uint8_t *cmd)
+{
+  uint8_t help_message[] = "Commands: READ, HELP, CLEAR\r\n";
+  uint8_t read_message[] = "Reading sensors...\r\n";
+  uint8_t clear_message[] = "\033[2J\033[H";
+  uint8_t unknown_message[] = "Unknown Command\r\n";
+
+  if(strcmp((char *)cmd, "READ") == 0)
+  {
+    HAL_UART_Transmit(&huart2, read_message, sizeof(read_message), HAL_MAX_DELAY);
+  }
+  else if(strcmp((char *)cmd, "HELP") == 0)
+  {
+    HAL_UART_Transmit(&huart2, help_message, sizeof(help_message), HAL_MAX_DELAY);
+  }
+  else if(strcmp((char *)cmd, "CLEAR") == 0)
+  {
+    HAL_UART_Transmit(&huart2, clear_message, sizeof(clear_message), HAL_MAX_DELAY);
+  }
+  else 
+  {
+    HAL_UART_Transmit(&huart2, unknown_message, sizeof(unknown_message), HAL_MAX_DELAY);
+  }
+}
 /* USER CODE END 4 */
 
 /**

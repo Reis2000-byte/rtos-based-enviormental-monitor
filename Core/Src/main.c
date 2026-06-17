@@ -23,6 +23,7 @@
 #include "stm32f4xx_hal_def.h"
 #include "stm32f4xx_hal_uart.h"
 #include "usb_host.h"
+#include <complex.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -431,8 +432,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       rxIndex = 0;
     }
     else {
-      HAL_UART_Transmit(&huart2, &rxByte, 1, HAL_MAX_DELAY);
-      rx_buffer[rxIndex++] = rxByte; //Add to Buffer
+      if(rxIndex < sizeof(rx_buffer) - 1)
+      {
+        HAL_UART_Transmit(&huart2, &rxByte, 1, HAL_MAX_DELAY);
+        rx_buffer[rxIndex++] = rxByte; //Add to Buffer
+      }
+      else
+      {
+        uint8_t bell = '\a'; //terminal beep
+        HAL_UART_Transmit(&huart2, &bell, 1, HAL_MAX_DELAY);
+      }
     }
     HAL_UART_Receive_IT(&huart2, &rxByte, 1);
   }

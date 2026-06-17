@@ -1,0 +1,38 @@
+# Build output
+build/
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.axf
+
+# STM32CubeMX scratch
+mx.scratch
+
+# Claude AI assistant memory
+.claude/
+
+# CMake generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+*.cmake
+!cmake/
+!CMakeLists.txt
+!CMakePresets.json
+
+# IDE store/cache files (machine-specific)
+.settings/*.store.json
+
+# OS generated
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Compiler/linker intermediates
+*.o
+*.d
+*.su
+*.cyclo

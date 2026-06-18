@@ -18,18 +18,17 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "stm32f407xx.h"
-#include "stm32f4xx_hal.h"
+#include "cmsis_os.h"
+#include "cmsis_os2.h"
 #include "stm32f4xx_hal_def.h"
 #include "stm32f4xx_hal_uart.h"
 #include "usb_host.h"
-#include <complex.h>
-#include <stdint.h>
-#include <string.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,10 +55,46 @@ SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart2;
 
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for Sensor_Task */
+osThreadId_t Sensor_TaskHandle;
+const osThreadAttr_t Sensor_Task_attributes = {
+  .name = "Sensor_Task",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityHigh,
+};
+/* Definitions for UART_Task */
+osThreadId_t UART_TaskHandle;
+const osThreadAttr_t UART_Task_attributes = {
+  .name = "UART_Task",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for LED_Task */
+osThreadId_t LED_TaskHandle;
+const osThreadAttr_t LED_Task_attributes = {
+  .name = "LED_Task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* USER CODE BEGIN PV */
 uint8_t rx_buffer[64];
 uint8_t rxByte;
 uint8_t rxIndex = 0;
+
+osMessageQueueId_t SensorQueueHandle;
+
+typedef struct{
+  float temp;
+  float humidity;
+  float pressure;
+} SensorData_t;
 
 /* USER CODE END PV */
 
@@ -70,7 +105,10 @@ static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
-void MX_USB_HOST_Process(void);
+void StartDefaultTask(void *argument);
+void Sensor_Task_entry(void *argument);
+void UART_Task_entry(void *argument);
+void LED_Task_entry(void *argument);
 
 /* USER CODE BEGIN PFP */
 static void processCommand(uint8_t *cmd);
@@ -113,26 +151,63 @@ int main(void)
   MX_I2C1_Init();
   MX_I2S3_Init();
   MX_SPI1_Init();
-  MX_USB_HOST_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart2, &rxByte, 1); // kick off listener
   /* USER CODE END 2 */
+
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  SensorQueueHandle = osMessageQueueNew(10, sizeof(SensorData_t), NULL);
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* creation of Sensor_Task */
+  Sensor_TaskHandle = osThreadNew(Sensor_Task_entry, NULL, &Sensor_Task_attributes);
+
+  /* creation of UART_Task */
+  UART_TaskHandle = osThreadNew(UART_Task_entry, NULL, &UART_Task_attributes);
+
+  /* creation of LED_Task */
+  LED_TaskHandle = osThreadNew(LED_Task_entry, NULL, &LED_Task_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     /* USER CODE END WHILE */
-    MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
-    GPIOD->BSRR = (1UL << 12); // set PD12 high
-    HAL_Delay(500);
-    GPIOD->BSRR = (1UL << (12 + 16)); // set PD12 low
-    HAL_Delay(500);
-
-
   }
   /* USER CODE END 3 */
 }
@@ -472,6 +547,118 @@ static void processCommand(uint8_t *cmd)
   }
 }
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* init code for USB_HOST */
+  MX_USB_HOST_Init();
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_Sensor_Task_entry */
+/**
+* @brief Function implementing the Sensor_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_Sensor_Task_entry */
+void Sensor_Task_entry(void *argument)
+{
+  /* USER CODE BEGIN Sensor_Task_entry */
+  SensorData_t data;
+  uint32_t tick = osKernelGetTickCount();
+  /* Infinite loop */
+  for(;;)
+  {
+    data.temp = 23.4f;
+    data.humidity = 10.0f;
+    data.pressure = 2.0f;
+
+    osMessageQueuePut(SensorQueueHandle, &data, 0, 0);
+
+    tick+=1000;
+    osDelayUntil(tick);
+  }
+  /* USER CODE END Sensor_Task_entry */
+}
+
+/* USER CODE BEGIN Header_UART_Task_entry */
+/**
+* @brief Function implementing the UART_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_UART_Task_entry */
+void UART_Task_entry(void *argument)
+{
+  /* USER CODE BEGIN UART_Task_entry */
+  SensorData_t data;
+  char txBuf[64];
+  /* Infinite loop */
+  for(;;)
+  {
+    if(osMessageQueueGet(SensorQueueHandle, &data, NULL, osWaitForever) == osOK)
+    {
+      snprintf(txBuf, sizeof(txBuf) , "T: %.1fC | H: %.1f%% | P: %.1fhPa\r\n", data.temp, data.humidity, data.pressure);
+      HAL_UART_Transmit(&huart2, (uint8_t*) txBuf , strlen(txBuf), HAL_MAX_DELAY);
+    }
+  }
+  /* USER CODE END UART_Task_entry */
+}
+
+/* USER CODE BEGIN Header_LED_Task_entry */
+/**
+* @brief Function implementing the LED_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_LED_Task_entry */
+void LED_Task_entry(void *argument)
+{
+  /* USER CODE BEGIN LED_Task_entry */
+  /* Infinite loop */
+  for(;;)
+  {
+    GPIOD->ODR ^= GPIO_ODR_OD12;
+    osDelay(500);
+  }
+  /* USER CODE END LED_Task_entry */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM6 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM6)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

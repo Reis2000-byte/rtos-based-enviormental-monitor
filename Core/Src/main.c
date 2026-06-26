@@ -499,12 +499,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if(huart -> Instance == USART2)
   {
-    if(rxByte == '\r')
+    if(rxByte == '\r' || rxByte == '\n')
     {
-      HAL_UART_Transmit(&huart2, (uint8_t *)"\r\n", 2, HAL_MAX_DELAY);
-      rx_buffer[rxIndex] = '\0'; //NULL terminate
-      processCommand(rx_buffer);
-      rxIndex = 0;
+      if(rxIndex > 0)
+      {
+        HAL_UART_Transmit(&huart2, (uint8_t *)"\r\n", 2, HAL_MAX_DELAY);
+        rx_buffer[rxIndex] = '\0';
+        processCommand(rx_buffer);
+        rxIndex = 0;
+      }
     }
     else {
       if(rxIndex < sizeof(rx_buffer) - 1)

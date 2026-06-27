@@ -131,7 +131,13 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE ${MX_LINK_DIRS})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${MX_LINK_LIBS})
 
 # Enable float support in newlib-nano printf/snprintf
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -T${CMAKE_SOURCE_DIR}/STM32F407XX_FLASH.ld
+    -Wl,-Map=${PROJECT_NAME}.map
+    -Wl,--gc-sections
+    -Wl,--no-warn-rwx-segment
+    -u _printf_float
+)
 
 # Add the map file to the list of files to be removed with 'clean' target
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES ADDITIONAL_CLEAN_FILES ${CMAKE_PROJECT_NAME}.map)

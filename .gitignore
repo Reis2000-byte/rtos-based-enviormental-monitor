@@ -20,6 +20,7 @@ cmake_install.cmake
 compile_commands.json
 *.cmake
 !cmake/
+!cmake/**
 !CMakeLists.txt
 !CMakePresets.json
 

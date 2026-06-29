@@ -7,7 +7,7 @@
 
 static int32_t t_fine;
 
-bool bme280_init(I2C_HandleTypeDef *hi2c, bme_calibration_params *cal_param)
+bool bme280_init(I2C_HandleTypeDef *hi2c, bme_calibration_params_t *cal_param)
 {
     uint8_t chip_id;
     HAL_I2C_Mem_Read(hi2c, BME280_ADDR, 0xD0, I2C_MEMADD_SIZE_8BIT, &chip_id, 1, HAL_MAX_DELAY);
@@ -52,7 +52,7 @@ bool bme280_init(I2C_HandleTypeDef *hi2c, bme_calibration_params *cal_param)
     return true;
 }
 
-bool bme280_read_sensors(I2C_HandleTypeDef *hi2c, bme_raw *data)
+bool bme280_read_sensors(I2C_HandleTypeDef *hi2c, bme_raw_t *data)
 {
     uint8_t buf[8];
     if(HAL_I2C_Mem_Read(hi2c, BME280_ADDR, 0xF7, I2C_MEMADD_SIZE_8BIT, buf, 8, HAL_MAX_DELAY) != HAL_OK)
@@ -68,7 +68,7 @@ bool bme280_read_sensors(I2C_HandleTypeDef *hi2c, bme_raw *data)
 /* Bosch temperature compensation (datasheet §4.2.3).
  * Sets the file-level t_fine used by pressure and humidity compensation.
  * Returns temperature in units of 0.01°C (e.g. 2345 = 23.45°C). */
-static int32_t compensate_temp(bme_calibration_params *cal, bme_raw *raw)
+static int32_t compensate_temp(bme_calibration_params_t *cal, bme_raw_t *raw)
 {
     int32_t var1, var2;
     var1  = ((((raw->temp>>3) - ((int32_t)cal->dig_T1<<1))) * ((int32_t)cal->dig_T2)) >> 11;
@@ -80,7 +80,7 @@ static int32_t compensate_temp(bme_calibration_params *cal, bme_raw *raw)
 /* Bosch pressure compensation (datasheet §4.2.3).
  * Requires t_fine to be set by compensate_temp first.
  * Returns pressure in Pa as a Q24.8 fixed-point value (divide by 256 for Pa). */
-static uint32_t compensate_press(bme_calibration_params *cal, bme_raw *raw)
+static uint32_t compensate_press(bme_calibration_params_t *cal, bme_raw_t *raw)
 {
     int64_t var1, var2, p; 
     var1 = ((int64_t)t_fine) - 128000;  
@@ -104,7 +104,7 @@ static uint32_t compensate_press(bme_calibration_params *cal, bme_raw *raw)
 /* Bosch humidity compensation (datasheet §4.2.3).
  * Requires t_fine to be set by compensate_temp first.
  * Returns relative humidity in Q22.10 fixed-point (divide by 1024 for %RH). */
-static uint32_t compensate_hum(bme_calibration_params *cal, bme_raw *raw)
+static uint32_t compensate_hum(bme_calibration_params_t *cal, bme_raw_t *raw)
 {
     int32_t v_x1_u32r;    
     v_x1_u32r = (t_fine - ((int32_t)76800)); 
@@ -119,7 +119,7 @@ static uint32_t compensate_hum(bme_calibration_params *cal, bme_raw *raw)
     return (uint32_t)(v_x1_u32r>>12); 
 }
 
-void bme280_compensate(bme_calibration_params *cal_param, bme_raw *raw, bme_data *data)
+void bme280_compensate(bme_calibration_params_t *cal_param, bme_raw_t *raw, bme_data_t *data)
 {
     data->temp =  compensate_temp(cal_param,raw);
     data->press = compensate_press(cal_param,raw);

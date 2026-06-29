@@ -10,26 +10,26 @@
 
 /** @brief Raw ADC counts from a single burst read of registers 0xF7-0xFE.
  *         Values are uncompensated — pass to bme280_compensate to get physical units. */
-typedef struct sensor_readings
+typedef struct
 {
     uint32_t press;  /* 20-bit raw pressure ADC count */
     int32_t  temp;   /* 20-bit raw temperature ADC count */
     uint32_t hum;    /* 16-bit raw humidity ADC count */
-}bme_raw;
+}bme_raw_t;
 
 /** @brief Compensated sensor output in physical units.
  *         Populated by bme280_compensate; ready to display or transmit. */
-typedef struct configured_data
+typedef struct
 {
     uint32_t press;  /* Pressure in Pa (Q24.8 — divide by 256 for Pa) */
     int32_t  temp;   /* Temperature in 0.01 degC (e.g. 2345 = 23.45 degC) */
     uint32_t hum;    /* Relative humidity in Q22.10 (divide by 1024 for %RH) */
-}bme_data;
+}bme_data_t;
 
 /** @brief Factory calibration coefficients burned into the BME280's NVM.
  *         Read once during bme280_init; used by bme280_compensate to correct
  *         raw ADC counts for each chip's unique offset and gain. */
-typedef struct calibration_params
+typedef struct
 {
     uint16_t dig_T1;  /* Temperature: unsigned */
     int16_t  dig_T2;  /* Temperature: signed */
@@ -49,7 +49,7 @@ typedef struct calibration_params
     int16_t  dig_H4;  /* Humidity: signed, packed across 0xE4/0xE5 */
     int16_t  dig_H5;  /* Humidity: signed, packed across 0xE5/0xE6 */
     int8_t   dig_H6;  /* Humidity: signed byte at 0xE7 */
-}bme_calibration_params;
+}bme_calibration_params_t;
 
 /**
  * @brief  Initialise the BME280: verify chip ID, soft reset, configure oversampling,
@@ -58,7 +58,7 @@ typedef struct calibration_params
  * @param  cal_param  Calibration struct to populate; only valid if true is returned
  * @retval true on success, false if chip absent or returns wrong ID
  */
-bool bme280_init(I2C_HandleTypeDef *hi2c, bme_calibration_params *cal_param);
+bool bme280_init(I2C_HandleTypeDef *hi2c, bme_calibration_params_t *cal_param);
 
 /**
  * @brief  Burst-read all 8 raw ADC registers (0xF7-0xFE) in one I2C transaction
@@ -67,7 +67,7 @@ bool bme280_init(I2C_HandleTypeDef *hi2c, bme_calibration_params *cal_param);
  * @param  raw   Output struct for raw ADC counts
  * @retval true on success, false on I2C error
  */
-bool bme280_read_sensors(I2C_HandleTypeDef *hi2c, bme_raw *raw);
+bool bme280_read_sensors(I2C_HandleTypeDef *hi2c, bme_raw_t *raw);
 
 /**
  * @brief  Convert raw ADC counts to compensated physical values using
@@ -77,6 +77,6 @@ bool bme280_read_sensors(I2C_HandleTypeDef *hi2c, bme_raw *raw);
  * @param  raw        Raw ADC counts from bme280_read_sensors
  * @param  data       Output: temperature in 0.01 degC, pressure in Pa, humidity in Q22.10
  */
-void bme280_compensate(bme_calibration_params *cal_param, bme_raw *raw, bme_data *data);
+void bme280_compensate(bme_calibration_params_t *cal_param, bme_raw_t *raw, bme_data_t *data);
 
 #endif

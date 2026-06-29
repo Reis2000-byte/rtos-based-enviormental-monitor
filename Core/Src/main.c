@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "bme280.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -89,12 +90,6 @@ uint8_t rxByte;
 uint8_t rxIndex = 0;
 
 osMessageQueueId_t SensorQueueHandle;
-
-typedef struct{
-  float temp;
-  float humidity;
-  float pressure;
-} SensorData_t;
 
 /* USER CODE END PV */
 
@@ -172,7 +167,7 @@ int main(void)
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  SensorQueueHandle = osMessageQueueNew(10, sizeof(SensorData_t), NULL);
+  SensorQueueHandle = osMessageQueueNew(10, sizeof(bme_data_t), NULL);
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -581,14 +576,21 @@ void StartDefaultTask(void *argument)
 void Sensor_Task_entry(void *argument)
 {
   /* USER CODE BEGIN Sensor_Task_entry */
-  SensorData_t data;
+  bme_raw_t raw;
+  bme_data_t data;
+  bme_calibration_params_t cal;
+  if (!bme280_init(&hi2c1, &cal))
+  {
+      // handle error — blink LED, log, or loop forever
+      for(;;) osDelay(1000);
+  }
+
   uint32_t tick = osKernelGetTickCount();
   /* Infinite loop */
   for(;;)
   {
-    data.temp = 23.4f;
-    data.humidity = 10.0f;
-    data.pressure = 2.0f;
+    bme280_read_sensors(&hi2c1, &raw);
+    bme280_compensate(&cal, &raw, &data);
 
     osMessageQueuePut(SensorQueueHandle, &data, 0, 0);
 
@@ -608,14 +610,14 @@ void Sensor_Task_entry(void *argument)
 void UART_Task_entry(void *argument)
 {
   /* USER CODE BEGIN UART_Task_entry */
-  SensorData_t data;
+  bme_data_t data;
   char txBuf[64];
   /* Infinite loop */
   for(;;)
   {
     if(osMessageQueueGet(SensorQueueHandle, &data, NULL, osWaitForever) == osOK)
     {
-      snprintf(txBuf, sizeof(txBuf) , "T: %.1fC | H: %.1f%% | P: %.1fhPa\r\n", data.temp, data.humidity, data.pressure);
+      snprintf(txBuf, sizeof(txBuf) , "T: %.1fC | H: %.1f%% | P: %.1fhPa\r\n", (float)data.temp/100.0f, (float)data.hum/1024.0f, (float)data.press/25600.0f);
       HAL_UART_Transmit(&huart2, (uint8_t*) txBuf , strlen(txBuf), HAL_MAX_DELAY);
     }
   }

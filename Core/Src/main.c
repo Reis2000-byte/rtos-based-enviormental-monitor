@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "bme280.h"
+#include "task.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -88,6 +89,7 @@ const osThreadAttr_t LED_Task_attributes = {
 uint8_t rx_buffer[64];
 uint8_t rxByte;
 uint8_t rxIndex = 0;
+volatile uint8_t sensor_enabled = 0;
 
 osMessageQueueId_t SensorQueueHandle;
 
@@ -148,7 +150,9 @@ int main(void)
   MX_SPI1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_IT(&huart2, &rxByte, 1); // kick off listener
+  HAL_UART_Receive_IT(&huart2, &rxByte, 1);
+  const char *banner = "\r\n=== Environmental Monitor ===\r\nType START to begin. Type HELP for commands.\r\n\r\n";
+  HAL_UART_Transmit(&huart2, (uint8_t *)banner, strlen(banner), HAL_MAX_DELAY);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -522,18 +526,35 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 static void processCommand(uint8_t *cmd)
 {
-  uint8_t help_message[] = "Commands: READ, HELP, CLEAR\r\n";
-  uint8_t read_message[] = "Reading sensors...\r\n";
+  uint8_t help_message[] = "Commands: HELP, CLEAR, START, STOP, STATUS\r\n";
+  uint8_t start_message[] = "Starting Sensor Read:\r\n";
+  uint8_t stop_message[] = "Stopping Sensor Read\r\n";
   uint8_t clear_message[] = "\033[2J\033[H";
   uint8_t unknown_message[] = "Unknown Command\r\n";
 
-  if(strcmp((char *)cmd, "READ") == 0)
-  {
-    HAL_UART_Transmit(&huart2, read_message, sizeof(read_message), HAL_MAX_DELAY);
-  }
-  else if(strcmp((char *)cmd, "HELP") == 0)
+  if(strcmp((char *)cmd, "HELP") == 0)
   {
     HAL_UART_Transmit(&huart2, help_message, sizeof(help_message), HAL_MAX_DELAY);
+  }
+  else if (strcmp((char *) cmd, "START") == 0)
+  {
+    sensor_enabled = 1;
+    HAL_UART_Transmit(&huart2, start_message, sizeof(start_message), HAL_MAX_DELAY);
+  }
+  else if (strcmp((char *) cmd, "STOP") == 0)
+  {
+    sensor_enabled = 0;
+    HAL_UART_Transmit(&huart2, stop_message, sizeof(stop_message), HAL_MAX_DELAY);
+  }
+  else if (strcmp((char *) cmd, "STATUS") == 0)
+  {
+    char status_buf[80];
+    snprintf(status_buf, sizeof(status_buf),
+              "Heap: %u bytes | Tasks: %u | Uptime: %lus\r\n",
+              (unsigned)xPortGetFreeHeapSize(),
+              (unsigned)uxTaskGetNumberOfTasks(),
+              (unsigned long)(osKernelGetTickCount() / 1000));
+    HAL_UART_Transmit(&huart2, (uint8_t *)status_buf, strlen(status_buf), HAL_MAX_DELAY);
   }
   else if(strcmp((char *)cmd, "CLEAR") == 0)
   {
@@ -589,11 +610,12 @@ void Sensor_Task_entry(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    bme280_read_sensors(&hi2c1, &raw);
-    bme280_compensate(&cal, &raw, &data);
-
-    osMessageQueuePut(SensorQueueHandle, &data, 0, 0);
-
+    if(sensor_enabled)
+    {
+      bme280_read_sensors(&hi2c1, &raw);
+      bme280_compensate(&cal, &raw, &data);
+      osMessageQueuePut(SensorQueueHandle, &data, 0, 0);
+    }
     tick+=1000;
     osDelayUntil(tick);
   }
@@ -617,7 +639,7 @@ void UART_Task_entry(void *argument)
   {
     if(osMessageQueueGet(SensorQueueHandle, &data, NULL, osWaitForever) == osOK)
     {
-      snprintf(txBuf, sizeof(txBuf) , "T: %.1fC | H: %.1f%% | P: %.1fhPa\r\n", (float)data.temp/100.0f, (float)data.hum/1024.0f, (float)data.press/25600.0f);
+      snprintf(txBuf, sizeof(txBuf) , "T: %.1fF | H: %.1f%% | P: %.1fhPa\r\n", ((float)data.temp / 100.0f) * 9.0f / 5.0f + 32.0f, (float)data.hum/1024.0f, (float)data.press/25600.0f);
       HAL_UART_Transmit(&huart2, (uint8_t*) txBuf , strlen(txBuf), HAL_MAX_DELAY);
     }
   }

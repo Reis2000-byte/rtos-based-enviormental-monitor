@@ -73,6 +73,32 @@ T: 74.2F | H: 60.9% | P: 1007.7hPa
 
 ---
 
+## BME280 Error Handling
+
+The firmware handles two sensor failure scenarios at runtime:
+
+**Init failure (on boot)**
+If the BME280 does not respond during startup — wrong wiring, missing pull-ups, or wrong address — `bme280_init` returns `false`. The firmware prints an error over UART and blinks the red LED (LD5, PD14) at 5 Hz indefinitely. A reset is required after fixing the wiring.
+
+```
+ERROR: BME280 not found. Check wiring (PB6=SCL, PB9=SDA) and SDO/CS strapping.
+```
+
+**Disconnection during operation**
+If the sensor stops responding after a successful init — loose wire, power loss to the breakout — `bme280_read_sensors` returns `false`. The firmware prints an error once and stops output automatically.
+
+```
+ERROR: BME280 disconnected. Reconnect and type START.
+```
+
+To recover without resetting the board:
+1. Reconnect the BME280 wiring
+2. Type `START`
+
+The firmware will re-run `bme280_init` before resuming reads, which re-applies the operating mode and re-reads calibration. If the sensor still does not respond it will print an additional error and wait for another `START`.
+
+---
+
 ## FreeRTOS Task Overview
 
 | Task | Priority | Stack | Role |
@@ -144,3 +170,16 @@ Click **Flash** in the STM32 extension panel to program the board over SWD. To s
 ---
 
 > **Regenerating HAL code:** The `.ioc` file is included so you can open it in STM32CubeMX and re-generate HAL/middleware at any time without losing application code. All user code lives inside `/* USER CODE BEGIN */ / /* USER CODE END */` guards and is preserved on re-generation.
+
+---
+
+## Troubleshooting
+
+**Red LED (LD5) blinking rapidly on startup**
+The BME280 did not respond on I2C init. The UART terminal will also print an error message. Check:
+- SCK → PB6, SDI → PB9
+- CS pulled to 3V, SDO pulled to GND
+- VIN connected to 3V (not 5V)
+
+**Terminal prints `ERROR: BME280 disconnected` and stops updating**
+The sensor lost contact during operation. Sensor output is automatically paused. Reconnect the wiring and reset the board.

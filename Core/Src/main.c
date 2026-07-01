@@ -90,6 +90,7 @@ uint8_t rx_buffer[64];
 uint8_t rxByte;
 uint8_t rxIndex = 0;
 volatile uint8_t sensor_enabled = 0;
+volatile uint8_t sensor_needs_reinit = 0;
 
 osMessageQueueId_t SensorQueueHandle;
 
@@ -602,8 +603,13 @@ void Sensor_Task_entry(void *argument)
   bme_calibration_params_t cal;
   if (!bme280_init(&hi2c1, &cal))
   {
-      // handle error — blink LED, log, or loop forever
-      for(;;) osDelay(1000);
+      const char *err = "ERROR: BME280 not found. Check wiring (PB6=SCL, PB9=SDA) and SDO/CS strapping.\r\n";
+      HAL_UART_Transmit(&huart2, (uint8_t *)err, strlen(err), HAL_MAX_DELAY);
+      for(;;)
+      {
+          GPIOD->ODR ^= GPIO_ODR_OD14;
+          osDelay(200);
+      }
   }
 
   uint32_t tick = osKernelGetTickCount();
@@ -612,9 +618,31 @@ void Sensor_Task_entry(void *argument)
   {
     if(sensor_enabled)
     {
-      bme280_read_sensors(&hi2c1, &raw);
-      bme280_compensate(&cal, &raw, &data);
-      osMessageQueuePut(SensorQueueHandle, &data, 0, 0);
+      if(sensor_needs_reinit)
+      {
+        if(!bme280_init(&hi2c1, &cal))
+        {
+          const char *err = "ERROR: BME280 still not found. Check wiring.\r\n";
+          HAL_UART_Transmit(&huart2, (uint8_t *)err, strlen(err), HAL_MAX_DELAY);
+          sensor_enabled = 0;
+        }
+        else
+        {
+          sensor_needs_reinit = 0;
+        }
+      }
+      if(sensor_enabled && !bme280_read_sensors(&hi2c1, &raw))
+      {
+        const char *err = "ERROR: BME280 disconnected. Reconnect and type START.\r\n";
+        HAL_UART_Transmit(&huart2, (uint8_t *)err, strlen(err), HAL_MAX_DELAY);
+        sensor_enabled = 0;
+        sensor_needs_reinit = 1;
+      }
+      else
+      {
+        bme280_compensate(&cal, &raw, &data);
+        osMessageQueuePut(SensorQueueHandle, &data, 0, 0);
+      }
     }
     tick+=1000;
     osDelayUntil(tick);
